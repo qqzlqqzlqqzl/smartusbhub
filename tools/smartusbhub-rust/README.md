@@ -17,11 +17,13 @@ Install Rust first if `cargo` is not available:
 winget install Rustlang.Rustup
 ```
 
-Then build:
+On this Windows machine there is no MSVC linker, so the GNU host toolchain is the verified local path:
 
 ```powershell
 cd C:\Users\lyl\Desktop\AISTM32\tools\smartusbhub-rust
-cargo build --release
+rustup toolchain install stable-x86_64-pc-windows-gnu
+rustup run stable-x86_64-pc-windows-gnu cargo test --locked
+rustup run stable-x86_64-pc-windows-gnu cargo build --release --locked
 ```
 
 The executable will be:
@@ -41,7 +43,7 @@ cargo run -- ports
 Read four-channel status:
 
 ```powershell
-cargo run -- status
+target\release\smartusbhub-cli.exe status
 ```
 
 Open all channels:
