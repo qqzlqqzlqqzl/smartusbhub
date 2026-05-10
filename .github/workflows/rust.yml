@@ -1,0 +1,38 @@
+name: Rust SmartUSBHub CLI
+
+on:
+  push:
+    paths:
+      - "tools/smartusbhub-rust/**"
+      - ".github/workflows/rust.yml"
+  pull_request:
+    paths:
+      - "tools/smartusbhub-rust/**"
+      - ".github/workflows/rust.yml"
+
+jobs:
+  test:
+    name: fmt, test, build
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: tools/smartusbhub-rust
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Build release
+        run: cargo build --release --locked
