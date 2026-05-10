@@ -104,23 +104,25 @@ tools\smartusbhub-rust
 winget install Rustlang.Rustup
 ```
 
-构建：
+本机已验证 GNU host toolchain 路径；如果没有 MSVC Build Tools，就用这个：
 
 ```powershell
 cd tools\smartusbhub-rust
-cargo build --release
+rustup toolchain install stable-x86_64-pc-windows-gnu
+rustup run stable-x86_64-pc-windows-gnu cargo test --locked
+rustup run stable-x86_64-pc-windows-gnu cargo build --release --locked
 ```
 
 常用命令：
 
 ```powershell
-cargo run -- ports
-cargo run -- status
-cargo run -- open-all
-cargo run -- power 1 on
-cargo run -- data 1 off
-cargo run -- reconnect 1 data 1000
-cargo run -- reconnect 1 power 2000
+target\release\smartusbhub-cli.exe ports
+target\release\smartusbhub-cli.exe status
+target\release\smartusbhub-cli.exe open-all
+target\release\smartusbhub-cli.exe power 1 on
+target\release\smartusbhub-cli.exe data 1 off
+target\release\smartusbhub-cli.exe reconnect 1 data 1000
+target\release\smartusbhub-cli.exe reconnect 1 power 2000
 ```
 
 Rust CLI 同样按 `VID_1A86 PID_FE0C` 自动发现控制口，不依赖固定 `COMx`。
