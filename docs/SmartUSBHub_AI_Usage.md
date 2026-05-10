@@ -90,6 +90,41 @@ python -m pip install -r requirements.txt
 4. 默认用只读命令检查状态；需要模拟拔插时，优先只断数据线，除非明确需要断电。
 5. 操作结束建议把需要使用的通道恢复为 `power=1`、`dataline=1`。
 
+## 常用 Rust 操作
+
+本仓库提供 Rust CLI 版本，目录：
+
+```powershell
+tools\smartusbhub-rust
+```
+
+如果本机没有 Rust 工具链，先安装：
+
+```powershell
+winget install Rustlang.Rustup
+```
+
+构建：
+
+```powershell
+cd tools\smartusbhub-rust
+cargo build --release
+```
+
+常用命令：
+
+```powershell
+cargo run -- ports
+cargo run -- status
+cargo run -- open-all
+cargo run -- power 1 on
+cargo run -- data 1 off
+cargo run -- reconnect 1 data 1000
+cargo run -- reconnect 1 power 2000
+```
+
+Rust CLI 同样按 `VID_1A86 PID_FE0C` 自动发现控制口，不依赖固定 `COMx`。
+
 ## 常用 Python 操作
 
 进入库目录：
