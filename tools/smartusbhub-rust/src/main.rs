@@ -192,13 +192,17 @@ impl SmartUsbHub {
     fn get_u16(&mut self, cmd: u8, channel: u8) -> Result<u16> {
         let frame = self.send_and_expect(cmd, &[channel], &[0])?;
         if frame.values.len() != 2 {
-            bail!("command 0x{cmd:02X} response expected 2 data bytes, got {:?}", frame.values);
+            bail!(
+                "command 0x{cmd:02X} response expected 2 data bytes, got {:?}",
+                frame.values
+            );
         }
         Ok(((frame.values[0] as u16) << 8) | frame.values[1] as u16)
     }
 
     fn send_and_expect(&mut self, cmd: u8, channels: &[u8], data: &[u8]) -> Result<Frame> {
         let packet = build_packet(cmd, channels, data)?;
+        let expected_mask = channel_mask(channels)?;
         self.rx.clear();
         self.port.write_all(&packet)?;
         self.port.flush()?;
@@ -211,6 +215,12 @@ impl SmartUsbHub {
                     self.rx.extend_from_slice(&buf[..n]);
                     while let Some(frame) = parse_next_frame(&mut self.rx) {
                         if frame.cmd == cmd {
+                            if expected_mask != 0
+                                && frame.channel_mask != 0
+                                && (frame.channel_mask & expected_mask) == 0
+                            {
+                                continue;
+                            }
                             return Ok(frame);
                         }
                     }
@@ -267,7 +277,9 @@ fn build_packet(cmd: u8, channels: &[u8], data: &[u8]) -> Result<Vec<u8>> {
 
     let mut packet = vec![0x55, 0x5A, cmd, channel_mask];
     packet.extend_from_slice(&payload_data);
-    let checksum = packet[2..].iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte));
+    let checksum = packet[2..]
+        .iter()
+        .fold(0u8, |sum, byte| sum.wrapping_add(*byte));
     packet.push(checksum);
     Ok(packet)
 }
@@ -334,7 +346,10 @@ fn parse_channels(input: &str) -> Result<Vec<u8>> {
 }
 
 fn parse_channel(input: &str) -> Result<u8> {
-    let normalized = input.trim().trim_start_matches("CH").trim_start_matches("ch");
+    let normalized = input
+        .trim()
+        .trim_start_matches("CH")
+        .trim_start_matches("ch");
     let channel: u8 = normalized
         .parse()
         .with_context(|| format!("invalid channel: {input}"))?;
@@ -401,4 +416,86 @@ Examples:
 The control port is discovered by USB VID_1A86 PID_FE0C. Do not hard-code COMx.
 "#
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_single_byte_command_packet() {
+        let packet = build_packet(CMD_SET_CHANNEL_POWER, &[1, 3], &[1]).unwrap();
+        assert_eq!(packet, vec![0x55, 0x5A, 0x01, 0x05, 0x01, 0x07]);
+    }
+
+    #[test]
+    fn builds_read_command_with_zero_payload() {
+        let packet = build_packet(CMD_GET_CHANNEL_POWER_STATUS, &[4], &[]).unwrap();
+        assert_eq!(packet, vec![0x55, 0x5A, 0x00, 0x08, 0x00, 0x08]);
+    }
+
+    #[test]
+    fn parses_protocol_v1_frame() {
+        let mut bytes = vec![0x55, 0x5A, CMD_GET_CHANNEL_POWER_STATUS, 0x01, 0x01, 0x02];
+        let frame = parse_next_frame(&mut bytes).unwrap();
+        assert_eq!(frame.cmd, CMD_GET_CHANNEL_POWER_STATUS);
+        assert_eq!(frame.channel_mask, 0x01);
+        assert_eq!(frame.values, vec![1]);
+        assert!(bytes.is_empty());
+    }
+
+    #[test]
+    fn parses_protocol_v2_frame() {
+        let mut bytes = vec![0x55, 0x5A, CMD_GET_CHANNEL_VOLTAGE, 0x01, 0x12, 0x34, 0x4A];
+        let frame = parse_next_frame(&mut bytes).unwrap();
+        assert_eq!(frame.cmd, CMD_GET_CHANNEL_VOLTAGE);
+        assert_eq!(frame.channel_mask, 0x01);
+        assert_eq!(frame.values, vec![0x12, 0x34]);
+    }
+
+    #[test]
+    fn skips_noise_before_frame() {
+        let mut bytes = vec![
+            0x00,
+            0xFF,
+            0x55,
+            0x5A,
+            CMD_SET_CHANNEL_DATALINE,
+            0x02,
+            0x01,
+            0x08,
+        ];
+        let frame = parse_next_frame(&mut bytes).unwrap();
+        assert_eq!(frame.cmd, CMD_SET_CHANNEL_DATALINE);
+        assert_eq!(frame.channel_mask, 0x02);
+        assert_eq!(frame.values, vec![1]);
+    }
+
+    #[test]
+    fn rejects_bad_checksum() {
+        let mut bytes = vec![0x55, 0x5A, CMD_GET_CHANNEL_CURRENT, 0x01, 0x00, 0x01, 0x00];
+        assert!(parse_next_frame(&mut bytes).is_none());
+        assert!(bytes.len() < 7);
+    }
+
+    #[test]
+    fn parses_channel_sets() {
+        assert_eq!(parse_channels("all").unwrap(), vec![1, 2, 3, 4]);
+        assert_eq!(parse_channels("1,3,3").unwrap(), vec![1, 3]);
+        assert_eq!(parse_channels("CH2").unwrap(), vec![2]);
+    }
+
+    #[test]
+    fn rejects_invalid_channel() {
+        assert!(parse_channel("0").is_err());
+        assert!(parse_channel("5").is_err());
+    }
+
+    #[test]
+    fn parses_states() {
+        assert!(parse_state("on").unwrap());
+        assert!(parse_state("1").unwrap());
+        assert!(!parse_state("off").unwrap());
+        assert!(!parse_state("0").unwrap());
+    }
 }
